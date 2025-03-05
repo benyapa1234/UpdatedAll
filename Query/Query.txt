@@ -175,4 +175,43 @@ INSERT INTO semester(semester_id, semester_name)
 VALUES (1,'ภาคเรียนที่ 1'),(2,'ภาคเรียนที่ 2'),(3,'ภาคเรียนที่3'),(4,'ภาคเรียนที่ 4');
 
 INSERT INTO section()
-VALUES (1,NULL);
+VALUES (1);
+
+
+//อ้อ
+ALTER TABLE program
+ADD COLUMN program_name_th VARCHAR(255) AFTER program_name,  -- ชื่อหลักสูตรภาษาไทย
+ADD COLUMN year INT(4) AFTER program_name_th,               -- ปีของหลักสูตร
+ADD COLUMN program_shortname_en VARCHAR(50) AFTER year,     -- ชื่อย่อหลักสูตรภาษาอังกฤษ
+ADD COLUMN program_shortname_th VARCHAR(50) AFTER program_shortname_en; -- ชื่อย่อหลักสูตรภาษาไทย
+
+CREATE TABLE university (
+    university_id INT(11) AUTO_INCREMENT PRIMARY KEY,
+    university_name_en VARCHAR(255) NOT NULL, -- ชื่อมหาวิทยาลัยภาษาอังกฤษ
+    university_name_th VARCHAR(255) NOT NULL, -- ชื่อมหาวิทยาลัยภาษาไทย
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE university_program (
+    id INT(11) AUTO_INCREMENT PRIMARY KEY,
+    university_id INT(11),  -- เชื่อมไปยังมหาวิทยาลัย
+    program_id INT(11),     -- เชื่อมไปยังหลักสูตร
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (university_id) REFERENCES university(university_id) ON DELETE CASCADE,
+    FOREIGN KEY (program_id) REFERENCES program(program_id) ON DELETE CASCADE
+);
+
+CREATE TABLE major (
+    major_id INT AUTO_INCREMENT PRIMARY KEY,
+    major_name_th VARCHAR(255) NOT NULL,
+	  major_name_en VARCHAR(255) NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE university_major (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    university_id INT(11) NOT NULL,
+    major_id INT(11) NOT NULL,
+    FOREIGN KEY (university_id) REFERENCES university(university_id) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (major_id) REFERENCES major(major_id) ON DELETE CASCADE ON UPDATE CASCADE
+);

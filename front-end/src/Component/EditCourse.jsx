@@ -1,3 +1,5 @@
+//อ้อแก้ทั้งไฟล์
+
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
@@ -24,6 +26,126 @@ export default function Course() {
 
   const [semesters, setSemesters] = useState([]); // Array to store semester data
   const [programs, setPrograms] = useState([]); // Array to store program data
+  const [universities, setUniversities] = useState([]); // Array to store university data
+  const [majors, setMajors] = useState([]); // Array to store major data
+  const [years, setYears] = useState([]); // Array to store years data
+  const [selectedUniversity, setSelectedUniversity] = useState("");
+  const [selectedMajor, setSelectedMajor] = useState("");
+  const [selectedYear, setSelectedYear] = useState("");
+  const [selectedProgram, setSelectedProgram] = useState("");
+  const [allFiltersSelected, setAllFiltersSelected] = useState(false);
+ 
+  useEffect(() => {
+    axios
+      .get("http://localhost:8000/university")
+      .then((response) => {
+        const universityData = Array.isArray(response.data) 
+          ? response.data 
+          : [response.data].filter(Boolean);
+        setUniversities(universityData);
+      })
+      .catch((error) => {
+        console.error("Error fetching universities:", error);
+        alert("ไม่สามารถโหลดรายชื่อมหาวิทยาลัยได้");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedUniversity) {
+      setMajors([]);
+      setSelectedMajor("");
+      return;
+    }
+
+    axios
+      .get(`http://localhost:8000/major?university_id=${selectedUniversity}`)
+      .then((response) => {
+        const majorData = Array.isArray(response.data) 
+          ? response.data 
+          : [response.data].filter(Boolean);
+        
+        setMajors(majorData);
+
+        // Reset major if current selection is no longer valid
+        if (majorData.length > 0 && 
+            !majorData.some(m => m.major_id.toString() === selectedMajor)) {
+          setSelectedMajor("");
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetching majors:", error);
+        alert("ไม่สามารถโหลดสาขาวิชาได้");
+        setMajors([]);
+        setSelectedMajor("");
+      });
+  }, [selectedUniversity]);
+
+  useEffect(() => {
+    if (!selectedMajor) {
+      setPrograms([]);
+      setYears([]);
+      setSelectedYear("");
+      return;
+    }
+
+    axios
+      .get(`http://localhost:8000/program?major_id=${selectedMajor}`)
+      .then((response) => {
+        const programData = Array.isArray(response.data) 
+          ? response.data 
+          : [response.data].filter(Boolean);
+
+        // Extract unique years, filtering out null/undefined
+        const uniqueYears = [
+          ...new Set(
+            programData
+              .map((p) => p.year)
+              .filter(year => year != null)
+          )
+        ].sort((a, b) => a - b);
+
+        // Filter programs by year if a year is selected
+        const filteredPrograms = selectedYear
+          ? programData.filter(p => p.year.toString() === selectedYear)
+          : programData;
+
+        setPrograms(filteredPrograms);
+        setYears(uniqueYears);
+
+        // Auto-select first year if no year selected
+        if (uniqueYears.length > 0 && !selectedYear) {
+          setSelectedYear(uniqueYears[0].toString());
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetching programs:", error);
+        alert("ไม่สามารถโหลดหลักสูตรได้");
+        setPrograms([]);
+        setYears([]);
+        setSelectedYear("");
+      });
+  }, [selectedMajor, selectedYear]);
+
+  useEffect(() => {
+    if (selectedUniversity && selectedMajor && selectedYear && selectedProgram) {
+      setAllFiltersSelected(true);
+      
+      // Update newCourse state with selected filters
+      setNewCourse(prev => ({
+        ...prev,
+        university_id: selectedUniversity,
+        major_id: selectedMajor,
+        year: selectedYear,
+        program_id: selectedProgram
+      }));
+    } else {
+      setAllFiltersSelected(false);
+      
+      // Reset related data when filters are incomplete
+      setCourse([]);
+    }
+  }, [selectedUniversity, selectedMajor, selectedYear, selectedProgram]);
+
 
   useEffect(() => {
     fetchPrograms(); // Fetch program data when the component loads
@@ -139,36 +261,36 @@ export default function Course() {
 
   const updateCourse = async (updatedCourse) => {
     try {
-        const response = await axios.put(
-            `http://localhost:8000/program_course/${updatedCourse.course_id}`, // เปลี่ยนให้ใช้ course_id ใน URL
-            {
-                new_course_id: updatedCourse.new_course_id,
-                course_name: updatedCourse.course_name,
-                course_engname: updatedCourse.course_engname,
-                program_id: updatedCourse.program_id,
-                semester_id: updatedCourse.semester_id,
-            }
-        );
-        setCourse(
-            course.map((courseItem) =>
-                courseItem.course_id === updatedCourse.course_id
-                    ? response.data
-                    : courseItem
-            )
-        );
-        setEditCourse({
-            course_id: "",
-            new_course_id: "",
-            course_name: "",
-            course_engname: "",
-            program_id: "",
-        });
-
-        alert("Course updated successfully!");
+      const response = await axios.put(
+        `http://localhost:8000/program_course/${updatedCourse.course_id}`,
+        {
+          new_course_id: updatedCourse.new_course_id,
+          course_name: updatedCourse.course_name,
+          course_engname: updatedCourse.course_engname,
+          program_id: updatedCourse.program_id,
+          semester_id: updatedCourse.semester_id,
+        }
+      );
+  
+      // Refetch courses to ensure complete sync with backend
+      if (newCourse.program_id && newCourse.semester_id) {
+        fetchCourses();
+      }
+  
+      setEditCourse({
+        course_id: "",
+        new_course_id: "",
+        course_name: "",
+        course_engname: "",
+        program_id: "",
+      });
+  
+      alert("Course updated successfully!");
     } catch (err) {
-        console.error("Error updating course:", err);
+      console.error("Error updating course:", err);
+      alert("Failed to update course. Please try again.");
     }
-};
+  };
 
   const deleteCourse = async (courseId) => {
     try {
@@ -206,6 +328,29 @@ export default function Course() {
     });
   };
 
+  const handleFilterChange = (filterName, value) => {
+    switch(filterName) {
+      case 'university':
+        setSelectedUniversity(value);
+        setSelectedMajor("");
+        setSelectedYear("");
+        setSelectedProgram("");
+        break;
+      case 'major':
+        setSelectedMajor(value);
+        setSelectedYear("");
+        setSelectedProgram("");
+        break;
+      case 'year':
+        setSelectedYear(value);
+        setSelectedProgram("");
+        break;
+      case 'program':
+        setSelectedProgram(value);
+        break;
+    }
+  };
+
   return (
     <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
       <h2 style={{ marginBottom: "20px" }}>Add, Edit, Delete Course</h2>
@@ -218,24 +363,67 @@ export default function Course() {
           marginBottom: "20px",
         }}
       >
+
+<select 
+        value={selectedUniversity}
+        onChange={(e) => handleFilterChange('university', e.target.value)}
+      >
+        <option value="">Select University</option>
+        {universities.map((uni) => (
+          <option 
+            key={uni.university_id} 
+            value={uni.university_id}
+          >
+            {uni.university_name_en}
+          </option>
+        ))}
+      </select>
+
+      <select 
+        value={selectedMajor}
+        onChange={(e) => handleFilterChange('major', e.target.value)}
+        disabled={!selectedUniversity}
+      >
+        <option value="">Select Major</option>
+        {majors.map((major) => (
+          <option 
+            key={major.major_id} 
+            value={major.major_id}
+          >
+            {major.major_name_en}
+          </option>
+        ))}
+      </select>
+
+      <select 
+        value={selectedYear}
+        onChange={(e) => handleFilterChange('year', e.target.value)}
+        disabled={!selectedMajor}
+      >
+        <option value="">Select Year</option>
+        {years.map((year) => (
+          <option key={year} value={year}>
+            {year}
+          </option>
+        ))}
+      </select>
+
         {/* Program Dropdown */}
-        <select
-          name="program_id"
-          value={newCourse.program_id}
-          onChange={handleCourseChange}
-          style={{ marginRight: "10px", padding: "8px" }}
-        >
-          <option value="">Select Program</option>
-          {programs && programs.length > 0 ? (
-            programs.map((program) => (
-              <option key={program.program_id} value={program.program_id}>
-                {program.program_name}
-              </option>
-            ))
-          ) : (
-            <option value="">No programs available</option>
-          )}
-        </select>
+        <select 
+        value={selectedProgram}
+        onChange={(e) => handleFilterChange('program', e.target.value)}
+        disabled={!selectedYear}
+      >
+        <option value="">Select Program</option>
+        {programs.map((program) => (
+          <option 
+            key={program.program_id} 
+            value={program.program_id}
+          >
+            {program.program_name}
+          </option>
+        ))}
+      </select>
 
         {/* Semester Dropdown */}
         <select
@@ -275,13 +463,6 @@ export default function Course() {
           placeholder="Course Name (English)"
           name="course_engname"
           value={newCourse.course_engname}
-          onChange={handleCourseChange}
-        />
-        <input
-          style={{ marginRight: "10px", padding: "8px" }}
-          placeholder="Year"
-          name="year"
-          value={newCourse.year}
           onChange={handleCourseChange}
         />
         <input
