@@ -636,116 +636,203 @@ export default function CurriculumManagement() {
             const sheet = workbook.Sheets[sheetName];
             const jsonData = XLSX.utils.sheet_to_json(sheet);
 
-            // เพิ่มข้อมูลที่เกี่ยวข้องจาก UI
+            // Find the selected program
+            const programData = programs.find(
+              (program) => program.program_id.toString() === selectedProgram.toString()
+            );
+
+            if (!programData) {
+              console.error("Selected program not found:", selectedProgram);
+              alert("Error: Selected program not found. Please select a valid program.");
+              return;
+            }
+
+            // Ensure all required fields are present
             const updatedData = jsonData.map((row) => ({
-              program_id: programs.find(
-                (program) => program.program_name === selectedProgram
-              )?.program_id,
-              course_id: selectedCourseId,
-              semester_id: selectedSemesterId,
-              section_id: selectedSectionId,
-              year: selectedYear,
-              CLO_code: row.CLO_code,
-              CLO_name: row.CLO_name,
-              CLO_engname: row.CLO_engname,
+              program_id: parseInt(programData.program_id),
+              course_id: parseInt(selectedCourseId),
+              semester_id: parseInt(selectedSemesterId),
+              section_id: parseInt(selectedSectionId),
+              year: parseInt(selectedYear),
+              CLO_code: row.CLO_code || "",
+              CLO_name: row.CLO_name || "",
+              CLO_engname: row.CLO_engname || ""
             }));
+
+            // Validate that all required fields are present in each row
+            const invalidRows = updatedData.filter(row => 
+              !row.program_id || !row.course_id || !row.semester_id || 
+              !row.section_id || !row.year || !row.CLO_code || 
+              !row.CLO_name || !row.CLO_engname
+            );
+
+            if (invalidRows.length > 0) {
+              console.error("Invalid rows found:", invalidRows);
+              alert(`Error: ${invalidRows.length} rows are missing required fields. Please check your Excel data.`);
+              return;
+            }
 
             setExcelData(updatedData); // อัปเดตข้อมูลใน State
             console.log("Uploaded File Data:", updatedData);
           } catch (error) {
             console.error("Error reading file:", error);
+            alert("Error processing file: " + error.message);
           }
         };
         reader.onerror = (error) => {
           console.error("Error reading file:", error);
+          alert("Error reading file: " + error.message);
         };
         reader.readAsBinaryString(selectedFile);
       } else {
         setTypeError("Please select only Excel file types");
+        alert("Please select only Excel file types");
       }
     } else {
       console.log("Please select your file");
     }
-  };
+};
 
-  const handlePasteButtonClick = async () => {
-    try {
-      if (!navigator.clipboard || !navigator.clipboard.readText) {
-        alert("Clipboard API is not supported in this browser.");
-        return;
-      }
-
-      // อ่านข้อมูลจาก Clipboard
-      const text = await navigator.clipboard.readText();
-
-      if (!text) {
-        alert("No text found in clipboard!");
-        return;
-      }
-
-      console.log("Raw Clipboard Data:", text);
-
-      // ใช้ XLSX เพื่อแปลงข้อมูลที่วางเป็น JSON
-      const workbook = XLSX.read(text, { type: "string" }); // แปลงข้อมูลใน clipboard เป็น workbook
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(sheet);
-
-      console.log("Parsed Data:", jsonData);
-
-      // เพิ่มข้อมูลที่เกี่ยวข้องจาก UI
-      const updatedData = jsonData.map((row) => ({
-        program_id: programs.find(
-          (program) => program.program_name === selectedProgram
-        )?.program_id,
-        course_id: selectedCourseId,
-        semester_id: selectedSemesterId,
-        section_id: selectedSectionId,
-        year: selectedYear,
-        CLO_code: row.CLO_code,
-        CLO_name: row.CLO_name,
-        CLO_engname: row.CLO_engname,
-      }));
-
-      setExcelData(updatedData); // อัปเดตข้อมูลใน State
-      console.log("Pasted Data:", updatedData);
-    } catch (err) {
-      console.error("Failed to paste data:", err);
-      alert("Failed to paste data. Make sure you copied valid Excel data.");
+const handlePasteButtonClick = async () => {
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      alert("Clipboard API is not supported in this browser.");
+      return;
     }
-  };
 
-  const handleUploadButtonClick = () => {
-    if (excelData && excelData.length > 0) {
-      fetch("http://localhost:8000/program_course_clo/excel", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(excelData),
-      })
-        .then((response) => {
-          if (!response.ok) {
-            return response.text().then((text) => {
-              throw new Error(text);
-            });
-          }
-          return response.json();
-        })
-        .then((data) => {
-          console.log("Success:", data);
-          alert("Data Uploaded Successfully!");
-          setExcelData(null); // ล้างข้อมูลหลังจากอัปโหลดสำเร็จ
-        })
-        .catch((error) => {
-          console.error("Error:", error);
-          alert("An error occurred: " + error.message);
+    // Validate all selections are made
+    if (!selectedProgram || !selectedCourseId || !selectedSectionId || 
+        !selectedSemesterId || !selectedYear) {
+      alert("Please select Program, Course, Section, Semester, and Year before pasting data.");
+      return;
+    }
+
+    // Find the selected program
+    const programData = programs.find(
+      (program) => program.program_id.toString() === selectedProgram.toString()
+    );
+
+    if (!programData) {
+      alert("Error: Selected program not found. Please select a valid program.");
+      return;
+    }
+
+    // อ่านข้อมูลจาก Clipboard
+    const text = await navigator.clipboard.readText();
+
+    if (!text) {
+      alert("No text found in clipboard!");
+      return;
+    }
+
+    console.log("Raw Clipboard Data:", text);
+
+    // ใช้ XLSX เพื่อแปลงข้อมูลที่วางเป็น JSON
+    const workbook = XLSX.read(text, { type: "string" }); // แปลงข้อมูลใน clipboard เป็น workbook
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+    console.log("Parsed Data:", jsonData);
+
+    // เพิ่มข้อมูลที่เกี่ยวข้องจาก UI
+    const updatedData = jsonData.map((row) => ({
+      program_id: parseInt(programData.program_id),
+      course_id: parseInt(selectedCourseId),
+      semester_id: parseInt(selectedSemesterId),
+      section_id: parseInt(selectedSectionId),
+      year: parseInt(selectedYear),
+      CLO_code: row.CLO_code || "",
+      CLO_name: row.CLO_name || "",
+      CLO_engname: row.CLO_engname || ""
+    }));
+
+    // Validate that all required fields are present in each row
+    const invalidRows = updatedData.filter(row => 
+      !row.program_id || !row.course_id || !row.semester_id || 
+      !row.section_id || !row.year || !row.CLO_code || 
+      !row.CLO_name || !row.CLO_engname
+    );
+
+    if (invalidRows.length > 0) {
+      console.error("Invalid rows found:", invalidRows);
+      alert(`Error: ${invalidRows.length} rows are missing required fields. Please check your Excel data.`);
+      return;
+    }
+
+    setExcelData(updatedData); // อัปเดตข้อมูลใน State
+    console.log("Pasted Data:", updatedData);
+  } catch (err) {
+    console.error("Failed to paste data:", err);
+    alert("Failed to paste data. Make sure you copied valid Excel data: " + err.message);
+  }
+};
+
+const handleUploadButtonClick = () => {
+  if (!excelData || excelData.length === 0) {
+    console.error("No data to upload");
+    alert("No data to upload. Please paste or upload data first.");
+    return;
+  }
+
+  // Additional validation before sending to server
+  if (!selectedProgram || !selectedCourseId || !selectedSectionId || 
+      !selectedSemesterId || !selectedYear) {
+    alert("Please select Program, Course, Section, Semester, and Year before uploading.");
+    return;
+  }
+
+  // Check each row for required fields
+  const missingFields = excelData.some(row => 
+    !row.program_id || !row.course_id || !row.semester_id || 
+    !row.section_id || !row.year || !row.CLO_code || 
+    !row.CLO_name || !row.CLO_engname
+  );
+
+  if (missingFields) {
+    alert("Some rows are missing required fields. Please check your data.");
+    return;
+  }
+
+  fetch("http://localhost:8000/program_course_clo/excel", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(excelData),
+  })
+    .then((response) => {
+      if (!response.ok) {
+        return response.json().then((errorData) => {
+          throw new Error(errorData.message || "Unknown error occurred");
         });
-    } else {
-      console.error("No data to upload");
-      alert("No data to upload. Please paste or upload data first.");
-    }
-  };
+      }
+      return response.json();
+    })
+    .then((data) => {
+      console.log("Success:", data);
+      alert("Data Uploaded Successfully!");
+      setExcelData(null); // ล้างข้อมูลหลังจากอัปโหลดสำเร็จ
+      
+      // Refresh CLOs after successful upload
+      if (selectedCourseId && selectedSectionId && selectedSemesterId && selectedYear && selectedProgram) {
+        fetch(
+          `http://localhost:8000/course_clo?program_id=${selectedProgram}&course_id=${selectedCourseId}&semester_id=${selectedSemesterId}&section_id=${selectedSectionId}&year=${selectedYear}`
+        )
+          .then((response) => response.json())
+          .then((cloData) => {
+            console.log("CLO Data refreshed:", cloData);
+            const formattedCLOs = Array.isArray(cloData) ? cloData : [cloData];
+            setCLOs(formattedCLOs);
+          })
+          .catch(error => console.error("Error refreshing CLOs:", error));
+      }
+    })
+    .catch((error) => {
+      console.error("Error:", error);
+      alert("An error occurred: " + error.message);
+    });
+};
 
   const handleInputChange = (ploId, cloId, value) => {
     if (editingScores) {
@@ -1078,23 +1165,23 @@ export default function CurriculumManagement() {
       alert("กรุณาเลือกข้อมูลให้ครบถ้วน");
       return;
     }
-  
+
     try {
       const response = await fetch(
         `http://localhost:8000/course_clo?program_id=${selectedProgram}&course_id=${selectedCourseId}&semester_id=${selectedSemesterId}&section_id=${selectedSectionId}&year=${selectedYear}`
       );
-  
+
       if (!response.ok) {
         throw new Error("Failed to fetch CLOs");
       }
-  
+
       const data = await response.json();
-  
+
       const formattedCLOs = Array.isArray(data) ? data : [data];
-  
+
       if (formattedCLOs.length > 0) {
         setPreviousYearCLOs(formattedCLOs);
-        setShowPreviousYearCLOsModal(true);  // Add this line to show the modal
+        setShowPreviousYearCLOsModal(true); // Add this line to show the modal
         alert(`พบ ${formattedCLOs.length} CLO สำหรับปีที่เลือก`);
       } else {
         alert("ไม่พบข้อมูล CLO");
@@ -1104,7 +1191,6 @@ export default function CurriculumManagement() {
       alert("เกิดข้อผิดพลาดในการดึงข้อมูล CLO");
     }
   };
-
 
   return (
     <div
@@ -1412,91 +1498,92 @@ export default function CurriculumManagement() {
       </div>
 
       <button
-          onClick={fetchPreviousYearCLOs}
-          className="btn btn-info me-2"
-          disabled={
-            !selectedProgram ||
-            !selectedCourseId ||
-            !selectedSemesterId ||
-            !selectedSectionId ||
-            !selectedYear
-          }
-        >
-          Previous Year CLOs
-        </button>
+        onClick={fetchPreviousYearCLOs}
+        className="btn btn-info me-2"
+        disabled={
+          !selectedProgram ||
+          !selectedCourseId ||
+          !selectedSemesterId ||
+          !selectedSectionId ||
+          !selectedYear
+        }
+      >
+        Previous Year CLOs
+      </button>
 
       {/* Modal for Previous Year CLOs */}
       {/* Modal for Previous Year CLOs */}
-{showPreviousYearCLOsModal && (
-  <div className="modal show" style={{ display: "block" }}>
-    <div className="modal-dialog modal-lg">
-      <div className="modal-content">
-        <div className="modal-header">
-          <h5 className="modal-title">CLOs from Previous Year</h5>
-          <button
-            type="button"
-            className="btn-close"
-            onClick={() => setShowPreviousYearCLOsModal(false)}
-          ></button>
-        </div>
-        <div className="modal-body">
-          {previousYearCLOs.length > 0 ? (
-            <div className="card">
-              <div className="card-header bg-primary text-white">
-                Course Learning Outcomes (CLOs)
+      {showPreviousYearCLOsModal && (
+        <div className="modal show" style={{ display: "block" }}>
+          <div className="modal-dialog modal-lg">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">CLOs from Previous Year</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowPreviousYearCLOsModal(false)}
+                ></button>
               </div>
-              <div className="card-body">
-                <table className="table table-striped">
-                  <thead>
-                    <tr>
-                      <th>CLO Code</th>
-                      <th>CLO Name (Thai)</th>
-                      <th>CLO Name (English)</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previousYearCLOs.map((clo) => (
-                      <tr key={clo.CLO_id}>
-                        <td className="fw-bold">{clo.CLO_code}</td>
-                        <td>{clo.CLO_name}</td>
-                        <td>{clo.CLO_engname}</td>
-                        <td>
-                          <button
-                            className="btn btn-info btn-sm"
-                            onClick={() => {
-                              console.log("Selected CLO for Copy:", clo);
-                              // You can implement copy functionality here
-                            }}
-                          >
-                            Copy
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="modal-body">
+                {previousYearCLOs.length > 0 ? (
+                  <div className="card">
+                    <div className="card-header bg-primary text-white">
+                      Course Learning Outcomes (CLOs)
+                    </div>
+                    <div className="card-body">
+                      <table className="table table-striped">
+                        <thead>
+                          <tr>
+                            <th>CLO Code</th>
+                            <th>CLO Name (Thai)</th>
+                            <th>CLO Name (English)</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previousYearCLOs.map((clo) => (
+                            <tr key={clo.CLO_id}>
+                              <td className="fw-bold">{clo.CLO_code}</td>
+                              <td>{clo.CLO_name}</td>
+                              <td>{clo.CLO_engname}</td>
+                              <td>
+                                <button
+                                  className="btn btn-info btn-sm"
+                                  onClick={() => {
+                                    console.log("Selected CLO for Copy:", clo);
+                                    // You can implement copy functionality here
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="alert alert-warning text-center">
+                    No Course Learning Outcomes (CLOs) found for the selected
+                    year
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowPreviousYearCLOsModal(false)}
+                >
+                  Close
+                </button>
               </div>
             </div>
-          ) : (
-            <div className="alert alert-warning text-center">
-              No Course Learning Outcomes (CLOs) found for the selected year
-            </div>
-          )}
+          </div>
         </div>
-        <div className="modal-footer">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => setShowPreviousYearCLOsModal(false)}
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       <div className="card mt-3">
         <div className="card-header">
@@ -1722,6 +1809,5 @@ export default function CurriculumManagement() {
         </div>
       </div>
     </div>
-    
   );
 }
