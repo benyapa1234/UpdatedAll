@@ -430,7 +430,7 @@ app.post('/login', async (req, res) => {
 // เพิ่ม API สำหรับการดึงข้อมูลโปรแกรม
 //อ้อแก้ไข
 app.get('/program', async (req, res) => {
-    const { major_id } = req.query;  
+    const { faculty_id } = req.query;  
 
     try {
         const conn = await pool.getConnection();
@@ -438,13 +438,13 @@ app.get('/program', async (req, res) => {
         let query;
         let params = [];
 
-        if (major_id) {
+        if (faculty_id) {
             query = `
                 SELECT p.* 
                 FROM program p
-                JOIN program_major pm ON p.program_id = pm.program_id
-                WHERE pm.major_id = ?`;
-            params = [major_id];
+                JOIN program_faculty pf ON p.program_id = pf.program_id
+                WHERE pf.faculty_id = ?`;
+            params = [faculty_id];
         } else {
             query = `SELECT * FROM program`;
         }
@@ -746,8 +746,9 @@ app.delete('/program_plo', async (req, res) => {
     }
 });
 
+//อ้อแก้ไข
 app.put('/program_plo', async (req, res) => {
-    const { program_id, plo_id, PLO_name, PLO_engname } = req.body; // รับ program_id, plo_id, และข้อมูล PLO ที่อัปเดต
+    const { program_id, plo_id, PLO_name, PLO_engname, PLO_code } = req.body; // เพิ่ม PLO_code
 
     if (!program_id || !plo_id || !PLO_name || !PLO_engname) {
         return res.status(400).json({ success: false, message: 'Program ID, PLO ID, PLO name, and PLO English name are required' });
@@ -762,12 +763,12 @@ app.put('/program_plo', async (req, res) => {
             return res.status(404).json({ success: false, message: 'PLO not found' });
         }
 
-        // อัปเดต PLO_name และ PLO_engname ในตาราง plo
+        // อัปเดต PLO_name, PLO_engname และ PLO_code ในตาราง plo
         const result = await conn.query(
             `UPDATE plo 
-             SET PLO_name = ?, PLO_engname = ? 
+             SET PLO_name = ?, PLO_engname = ?, PLO_code = ? 
              WHERE PLO_id = ?`,
-            [PLO_name, PLO_engname, plo_id]
+            [PLO_name, PLO_engname, PLO_code, plo_id]
         );
 
         if (result.affectedRows === 0) {
@@ -1385,60 +1386,60 @@ app.get('/course_clo', async (req, res) => {
 });
 
 app.put('/course_clo', async (req, res) => {
-    const { program_id, course_id, clo_id, semester_id, section_id, year, CLO_name, CLO_engname } = req.body;
-
-    if (!program_id || !course_id || !clo_id || !semester_id || !section_id || !year || !CLO_name || !CLO_engname) {
+    const { program_id, course_id, clo_id, semester_id, section_id, year, CLO_name, CLO_engname, CLO_code } = req.body;
+    
+    if (!program_id || !course_id || !clo_id || !semester_id || !section_id || !year || !CLO_name || !CLO_engname || !CLO_code) {
         return res.status(400).json({ message: 'Missing required fields' });
     }
-
+    
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-
+        
         // Log query parameters
         console.log("Checking program_course with parameters:", program_id, course_id, semester_id, section_id, year);
-
-        // Check if the combination of program_id, course_id, semester_id, section_id, year exists in program_course
+        
+        // Check if the combination exists in program_course
         const [programCourseCheck] = await conn.query(`
             SELECT * FROM program_course
             WHERE program_id = ? AND course_id = ? AND semester_id = ? AND section_id = ? AND year = ?
         `, [program_id, course_id, semester_id, section_id, year]);
-
+        
         console.log("Program course check result:", programCourseCheck);
-
+        
         if (!programCourseCheck || programCourseCheck.length === 0) {
             return res.status(404).json({ message: 'Program Course not found' });
         }
-
+        
         // Log query parameters for course_clo check
         console.log("Checking course_clo with parameters:", course_id, clo_id, semester_id, section_id, year);
-
-        // Check if the given course_clo exists with the provided course_id, clo_id, semester_id, section_id, year
+        
+        // Check if the given course_clo exists
         const [courseCloCheck] = await conn.query(`
             SELECT * FROM course_clo
             WHERE course_id = ? AND clo_id = ? AND semester_id = ? AND section_id = ? AND year = ?
         `, [course_id, clo_id, semester_id, section_id, year]);
-
+        
         console.log("Course CLO check result:", courseCloCheck);
-
+        
         if (!courseCloCheck || courseCloCheck.length === 0) {
             return res.status(404).json({ message: 'Course CLO not found' });
         }
-
+        
         // Update the course_clo table with the new details
         await conn.query(`
             UPDATE course_clo 
             SET clo_id = ?, semester_id = ?, section_id = ?, year = ? 
             WHERE course_id = ? AND clo_id = ? AND semester_id = ? AND section_id = ? AND year = ?
         `, [clo_id, semester_id, section_id, year, course_id, clo_id, semester_id, section_id, year]);
-
-        // Update CLO_name and CLO_engname in the clo table
+        
+        // Update CLO_name, CLO_engname, AND CLO_code in the clo table
         await conn.query(`
             UPDATE clo 
-            SET CLO_name = ?, CLO_engname = ? 
+            SET CLO_name = ?, CLO_engname = ?, CLO_code = ?
             WHERE CLO_id = ?
-        `, [CLO_name, CLO_engname, clo_id]);
-
+        `, [CLO_name, CLO_engname, CLO_code, clo_id]);
+        
         await conn.commit();
         res.status(200).json({ message: 'Course CLO updated successfully' });
     } catch (err) {
@@ -1690,30 +1691,36 @@ app.post('/program_course_clo/excel', async (req, res) => {
 
 app.get('/course_plo', async (req, res) => {
     const { program_id } = req.query;
-
+    
     if (!program_id) {
         return res.status(400).json({ success: false, message: 'Program ID is required' });
     }
-
+    
     try {
+        // Revised query based on actual database schema
+        // Using program_plo table to link PLOs to programs
         const query = `
             SELECT cp.course_id, cp.plo_id, cp.weight, c.course_name, p.PLO_code
             FROM course_plo cp
             JOIN course c ON cp.course_id = c.course_id
             JOIN plo p ON cp.plo_id = p.plo_id
-            JOIN program_course pc ON cp.course_id = pc.course_id
-            WHERE pc.program_id = ?
+            JOIN program_plo pp ON p.plo_id = pp.plo_id
+            WHERE pp.program_id = ?
         `;
-
+        
         const conn = await pool.getConnection();
         const rows = await conn.query(query, [program_id]);
-
-        if (rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'No data found for the given program ID' });
-        }
-
-        res.json(rows);
         conn.release();
+        
+        console.log(`Retrieved ${rows.length} course-PLO mappings for program ${program_id}`);
+        
+        if (rows.length === 0) {
+            return res.json({ success: true, message: [] });
+        }
+        
+        // Return consistent format - always an object with success and message fields
+        res.json({ success: true, message: rows });
+        
     } catch (error) {
         console.error('Error fetching course-PLO mappings:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
@@ -2414,38 +2421,6 @@ app.put('/api/update_assignment/:id', async (req, res) => {
     }
 });
 
-//อ้อเพิ่ม
-app.get('/university_program_major', async (req, res) => {
-    try {
-        const conn = await pool.getConnection();
-        const query = `
-            SELECT up.id, up.university_id, up.program_id, 
-                   u.university_name_en, u.university_name_th, 
-                   p.program_name, p.program_name_th, p.year, 
-                   p.program_shortname_en, p.program_shortname_th,
-                   GROUP_CONCAT(m.major_id) AS major_ids,
-                   GROUP_CONCAT(m.major_name_en) AS major_names_en,
-                   GROUP_CONCAT(m.major_name_th) AS major_names_th
-            FROM university_program up
-            JOIN university u ON up.university_id = u.university_id
-            JOIN program p ON up.program_id = p.program_id
-            LEFT JOIN program_major pm ON p.program_id = pm.program_id
-            LEFT JOIN major m ON pm.major_id = m.major_id
-            GROUP BY up.id, up.university_id, up.program_id, 
-                     u.university_name_en, u.university_name_th, 
-                     p.program_name, p.program_name_th, p.year, 
-                     p.program_shortname_en, p.program_shortname_th
-            ORDER BY up.id DESC;
-        `;
-        const rows = await conn.query(query);
-        conn.release();
-
-        res.status(200).json(rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Error fetching university programs', error: err });
-    }
-});
 
 //อ้อเพิ่ม
 app.get('/university', async (req, res) => {
@@ -2467,7 +2442,7 @@ app.get('/university', async (req, res) => {
 });
 
 //อ้อเพิ่ม
-app.get('/major', async (req, res) => {
+app.get('/faculty', async (req, res) => {
     try {
         const { university_id } = req.query;
 
@@ -2477,11 +2452,11 @@ app.get('/major', async (req, res) => {
 
         const conn = await pool.getConnection();
         const query = `
-            SELECT m.major_id, m.major_name_en, m.major_name_th 
-            FROM university_major um
-            JOIN major m ON um.major_id = m.major_id
-            WHERE um.university_id = ? 
-            ORDER BY m.major_name_en;
+            SELECT f.faculty_id, f.faculty_name_en, f.faculty_name_th 
+            FROM university_faculty uf
+            JOIN faculty f ON uf.faculty_id = f.faculty_id
+            WHERE uf.university_id = ? 
+            ORDER BY f.faculty_name_en;
         `;
         const [rows] = await conn.query(query, [university_id]);
         conn.release();
@@ -2489,16 +2464,16 @@ app.get('/major', async (req, res) => {
         res.status(200).json(rows);
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: "Error fetching majors", error: err });
+        res.status(500).json({ message: "Error fetching facultys", error: err });
     }
 });
 
 //อ้อเพิ่ม
-app.post('/program_major', async (req, res) => {
+app.post('/program_faculty', async (req, res) => {
     let conn;
     try {
         // Log the incoming request body
-        console.log('Received program_major request body:', req.body);
+        console.log('Received program_faculty request body:', req.body);
 
         // Check if database connection is available
         conn = await pool.getConnection();
@@ -2511,31 +2486,31 @@ app.post('/program_major', async (req, res) => {
             });
         }
 
-        const { program_id, major_id } = req.body;
+        const { program_id, faculty_id } = req.body;
 
         // Validate input
-        if (!program_id || !major_id) {
+        if (!program_id || !faculty_id) {
             return res.status(400).json({
                 error: 'Invalid input',
-                details: 'program_id and major_id are required'
+                details: 'program_id and faculty_id are required'
             });
         }
 
-        // Convert program_id and major_id to strings to handle BigInt
+        // Convert program_id and faculty_id to strings to handle BigInt
         const programIdString = program_id.toString();
-        const majorIdString = major_id.toString();
+        const facultyIdString = faculty_id.toString();
 
         // Perform database insertion
         const result = await conn.query(
-            'INSERT INTO program_major (program_id, major_id) VALUES (?, ?)',
-            [programIdString, majorIdString]
+            'INSERT INTO program_faculty (program_id, faculty_id) VALUES (?, ?)',
+            [programIdString, facultyIdString]
         );
 
         console.log('Insertion result:', result);
 
         // Custom serialization for the response
         res.status(200).json({
-            message: 'Program major added successfully',
+            message: 'Program faculty added successfully',
             result: {
                 // Convert BigInt values to strings
                 affectedRows: result.affectedRows ? result.affectedRows.toString() : 0,
@@ -2544,7 +2519,7 @@ app.post('/program_major', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error in program_major route:', {
+        console.error('Error in program_faculty route:', {
             message: error.message,
             stack: error.stack,
             name: error.name,

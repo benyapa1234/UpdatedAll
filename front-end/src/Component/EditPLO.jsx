@@ -27,16 +27,17 @@ const CoursePloManagement = () => {
   // New states for filtering
   const [universities, setUniversities] = useState([]);
   const [selectedUniversity, setSelectedUniversity] = useState("all");
-  const [majors, setMajors] = useState([]);
-  const [selectedMajor, setSelectedMajor] = useState("all");
+  const [facultys, setFacultys] = useState([]);
+  const [selectedFaculty, setSelectedFaculty] = useState("all");
   const [years, setYears] = useState([]);
   const [selectedYear, setSelectedYear] = useState("all");
 
   const [allFiltersSelected, setAllFiltersSelected] = useState(false);
-  const [showLoadPreviousPLOModal, setShowLoadPreviousPLOModal] = useState(false);
-const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
+  const [showLoadPreviousPLOModal, setShowLoadPreviousPLOModal] =
+    useState(false);
+  const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
 
-  // Fetch universities, majors, and years
+  // Fetch universities, facultys, and years
   useEffect(() => {
     axios
       .get("http://localhost:8000/university")
@@ -49,63 +50,61 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
 
   useEffect(() => {
     if (!selectedUniversity || selectedUniversity === "all") {
-      setMajors([]);
-      setSelectedMajor("all");
+      setFacultys([]);
+      setSelectedFaculty("all");
       return;
     }
 
     axios
-      .get(`http://localhost:8000/major?university_id=${selectedUniversity}`)
+      .get(`http://localhost:8000/faculty?university_id=${selectedUniversity}`)
       .then((response) => {
-        const majorData = Array.isArray(response.data) ? response.data : [response.data];
-        setMajors(majorData);
-        
-        // Reset major selection if current major is not in new list
-        if (majorData.length > 0 && !majorData.some(m => m.major_id.toString() === selectedMajor)) {
-          setSelectedMajor("all");
+        const facultyData = Array.isArray(response.data)
+          ? response.data
+          : [response.data];
+        setFacultys(facultyData);
+
+        if (
+          facultyData.length > 0 &&
+          !facultyData.some((f) => f.faculty_id.toString() === selectedFaculty)
+        ) {
+          setSelectedFaculty("all");
         }
       })
       .catch((error) => {
-        console.error("Error fetching majors:", error);
+        console.error("Error fetching facultys:", error);
         showAlert("ไม่สามารถโหลดสาขาวิชาได้", "danger");
-        setMajors([]);
-        setSelectedMajor("all");
+        setFacultys([]);
+        setSelectedFaculty("all");
       });
   }, [selectedUniversity]);
 
   // Fetch programs
   useEffect(() => {
-    // Reset state when no major is selected
-    if (!selectedMajor || selectedMajor === "all") {
+    if (!selectedFaculty || selectedFaculty === "all") {
       setFilteredPrograms([]);
       setYears([]);
       setSelectedYear("all");
       return;
     }
-  
-    // Fetch programs for the selected major
+
     axios
-      .get(`http://localhost:8000/program?major_id=${selectedMajor}`)
+      .get(`http://localhost:8000/program?faculty_id=${selectedFaculty}`)
       .then((response) => {
-        const programData = Array.isArray(response.data) ? response.data : [response.data];
-  
-        // เพิ่มเงื่อนไขการกรอง year
-        const filteredPrograms = selectedYear !== "all" 
-          ? programData.filter(p => p.year.toString() === selectedYear)
-          : programData;
-  
-        // Extract unique years
+        const programData = Array.isArray(response.data)
+          ? response.data
+          : [response.data];
+
+        // Remove year filtering here - show all programs for the faculty
+        setFilteredPrograms(programData);
+
+        // Extract unique years but don't filter by them yet
         const uniqueYears = [
-          ...new Set(programData.map((p) => p.year).filter(year => year != null))
+          ...new Set(
+            programData.map((p) => p.year).filter((year) => year != null)
+          ),
         ];
-  
-        setFilteredPrograms(filteredPrograms);
+
         setYears(uniqueYears.sort((a, b) => a - b));
-  
-        // Set default year if possible
-        if (uniqueYears.length > 0 && selectedYear === "all") {
-          setSelectedYear(uniqueYears[0].toString());
-        }
       })
       .catch((error) => {
         console.error("Error fetching programs:", error);
@@ -114,11 +113,31 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
         setYears([]);
         setSelectedYear("all");
       });
-  }, [selectedMajor, selectedYear]); // เพิ่ม selectedYear เป็น dependency
-
+  }, [selectedFaculty]); // เพิ่ม selectedYear เป็น dependency
 
   useEffect(() => {
-    if (selectedUniversity && selectedMajor && selectedYear && selectedProgram) {
+    if (selectedYear !== "all" && selectedProgram) {
+      const program = filteredPrograms.find(
+        (p) => p.program_id.toString() === selectedProgram
+      );
+      if (program && program.year.toString() !== selectedYear) {
+        // If selected program doesn't match selected year, reset program selection
+        setSelectedProgram(null);
+      }
+    }
+  }, [selectedYear, selectedProgram, filteredPrograms]);
+
+  useEffect(() => {
+    // ตรวจสอบว่าได้เลือกข้อมูลที่จำเป็นครบหรือไม่
+    if (
+      selectedUniversity &&
+      selectedUniversity !== "all" &&
+      selectedFaculty &&
+      selectedFaculty !== "all" &&
+      selectedYear &&
+      selectedYear !== "all" &&
+      selectedProgram
+    ) {
       setAllFiltersSelected(true);
     } else {
       setAllFiltersSelected(false);
@@ -129,40 +148,75 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
         setWeights({});
       }
     }
-  }, [selectedUniversity, selectedMajor, selectedYear, selectedProgram]);
- 
+  }, [selectedUniversity, selectedFaculty, selectedYear, selectedProgram]);
+
   useEffect(() => {
     if (allFiltersSelected && selectedProgram) {
+      // 1. ดึงข้อมูล PLO
       fetch(`http://localhost:8000/program_plo?program_id=${selectedProgram}`)
         .then((response) => response.json())
-        .then((data) => setPlos(data.success ? data.message : []));
-
+        .then((data) => {
+          setPlos(data.success ? data.message : []);
+          console.log("PLOs loaded:", data.success ? data.message : []);
+        })
+        .catch(error => console.error("Error fetching PLOs:", error));
+  
+      // 2. ดึงข้อมูลรายวิชาทั้งหมดของโปรแกรม
       fetch(`http://localhost:8000/course?program_id=${selectedProgram}`)
         .then((response) => response.json())
-        .then((data) => setCourses(data.success ? data.message : []));
-
-      fetch(`http://localhost:8000/course_plo?program_id=${selectedProgram}`)
-        .then((response) => response.json())
-        .then((data) => {
-          console.log("API Response:", data);
-          const weightsData = {};
-          const coursesData = {};
-
-          data.forEach((item) => {
-            const key = `${item.course_id}-${item.plo_id}`;
-            weightsData[key] = item.weight;
-
-            if (!coursesData[item.course_id]) {
-              coursesData[item.course_id] = {
-                course_id: item.course_id,
-                course_name: item.course_name
-              };
-            }
-          });
-          setWeights(weightsData);
-          setCourses(Object.values(coursesData)); 
+        .then((coursesData) => {
+          console.log("Raw courses data:", coursesData);
+          
+          // ตรวจสอบรูปแบบข้อมูลและแปลงให้อยู่ในรูปแบบที่ถูกต้อง
+          let formattedCourses = [];
+          if (coursesData.success && Array.isArray(coursesData.message)) {
+            formattedCourses = coursesData.message;
+          } else if (Array.isArray(coursesData)) {
+            formattedCourses = coursesData;
+          } else if (coursesData && typeof coursesData === 'object') {
+            formattedCourses = [coursesData];
+          }
+          
+          console.log("Formatted courses:", formattedCourses);
+          
+          // เก็บข้อมูลรายวิชา
+          setCourses(formattedCourses);
+          
+          // 3. ดึงข้อมูล course-plo mapping
+          fetch(`http://localhost:8000/course_plo?program_id=${selectedProgram}`)
+            .then((response) => response.json())
+            .then((mappingData) => {
+              console.log("Mapping data:", mappingData);
+              
+              // แปลงข้อมูลการแมปให้อยู่ในรูปแบบ weights object
+              const weightsData = {};
+              let mappingArray = [];
+              
+              if (mappingData.success && Array.isArray(mappingData.message)) {
+                mappingArray = mappingData.message;
+              } else if (Array.isArray(mappingData)) {
+                mappingArray = mappingData;
+              } else if (mappingData && typeof mappingData === 'object') {
+                mappingArray = [mappingData];
+              }
+              
+              // สร้าง weights object
+              mappingArray.forEach((item) => {
+                const key = `${item.course_id}-${item.plo_id}`;
+                weightsData[key] = item.weight;
+              });
+              
+              setWeights(weightsData);
+            })
+            .catch((error) => {
+              console.error("Error fetching mappings:", error);
+              setWeights({});
+            });
         })
-        .catch((error) => console.error("Error fetching weights:", error));
+        .catch((error) => {
+          console.error("Error fetching courses:", error);
+          setCourses([]);
+        });
     }
   }, [allFiltersSelected, selectedProgram]);
 
@@ -175,9 +229,8 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
     setWeights({}); // ล้างข้อมูลน้ำหนัก
   };
 
-  // Handler for major selection change
-  const handleMajorChange = (e) => {
-    setSelectedMajor(e.target.value);
+  const handleFacultyChange = (e) => {
+    setSelectedFaculty(e.target.value);
     setSelectedProgram(null);
     setPlos([]);
     setCourses([]);
@@ -186,11 +239,39 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
 
   // Handler for year selection change
   const handleYearChange = (e) => {
-    setSelectedYear(e.target.value);
-    setSelectedProgram(null);
+    const yearValue = e.target.value;
+    setSelectedYear(yearValue);
+
+    // If a year is selected, filter programs by that year
+    if (yearValue !== "all" && selectedFaculty && selectedFaculty !== "all") {
+      const yearFilteredPrograms = filteredPrograms.filter(
+        (p) => p.year && p.year.toString() === yearValue
+      );
+
+      // If current selected program doesn't match the year filter, reset it
+      if (selectedProgram) {
+        const program = filteredPrograms.find(
+          (p) => p.program_id.toString() === selectedProgram
+        );
+        if (program && program.year.toString() !== yearValue) {
+          setSelectedProgram(null);
+        }
+      }
+    }
+
+    // Clear PLOs and courses when changing year
     setPlos([]);
     setCourses([]);
     setWeights({});
+  };
+
+  const getVisiblePrograms = () => {
+    if (selectedYear !== "all") {
+      return filteredPrograms.filter(
+        (p) => p.year && p.year.toString() === selectedYear
+      );
+    }
+    return filteredPrograms;
   };
 
   // Handle deleting a PLO
@@ -227,6 +308,9 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
   };
 
   const calculateTotal = (courseId) => {
+    // กรณีที่ไม่มีข้อมูล PLO ให้คืนค่า 0
+    if (!plos || plos.length === 0) return 0;
+  
     return plos.reduce((sum, plo) => {
       const key = `${courseId}-${plo.plo_id}`;
       if (editingScores) {
@@ -247,29 +331,31 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
       alert("Please select a program before submitting scores.");
       return;
     }
-
+  
     if (Object.keys(scores).length === 0) {
       alert("No scores to submit. Please input scores first.");
       return;
     }
-
+  
     // แปลง scores object ให้เป็น array ตามรูปแบบที่ต้องการ
     const scoresArray = Object.keys(scores).map((key) => {
       const [course_id, plo_id] = key.split("-");
       return {
-        course_id: parseInt(course_id, 10), // Convert string to integer
-        plo_id: parseInt(plo_id, 10), // Convert string to integer
-        weight: parseFloat(scores[key]) || 0, // Convert weight to float (default 0)
+        course_id: parseInt(course_id, 10),
+        plo_id: parseInt(plo_id, 10),
+        weight: parseFloat(scores[key]) || 0,
       };
     });
-
+  
+    console.log("Submitting scores:", scoresArray);
+  
     // เรียก API POST เพื่อส่งข้อมูล
     fetch("http://localhost:8000/course_plo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        program_id: selectedProgram, // Ensure correct program_id is included
-        scores: scoresArray, // Payload for the API
+        program_id: selectedProgram,
+        scores: scoresArray,
       }),
     })
       .then((response) => {
@@ -282,15 +368,19 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
       })
       .then((data) => {
         if (data.success) {
-          // Update weights state immediately with the submitted scores
+          // อัปเดต weights state จาก scores ที่ส่งไป
           const updatedWeights = { ...weights };
           Object.keys(scores).forEach((key) => {
             updatedWeights[key] = scores[key];
           });
           setWeights(updatedWeights);
-          
+          setScores({}); // Clear scores after submission
+  
           alert("Scores submitted successfully!");
           setEditingScores(false); // ยกเลิกโหมดแก้ไข
+          
+          // เพิ่มการโหลดข้อมูลใหม่เพื่อให้แน่ใจว่าข้อมูลถูกอัปเดต
+          refreshDataFromServer();
         } else {
           alert(`Error: ${data.message}`);
         }
@@ -300,26 +390,54 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
         alert(`An error occurred while submitting scores: ${error.message}`);
       });
   };
+  
+  // เพิ่มฟังก์ชันใหม่สำหรับรีโหลดข้อมูลจากเซิร์ฟเวอร์
+  const refreshDataFromServer = () => {
+    if (!selectedProgram) return;
+    
+    // โหลดข้อมูลการแมปใหม่
+    fetch(`http://localhost:8000/course_plo?program_id=${selectedProgram}`)
+      .then(response => response.json())
+      .then(data => {
+        console.log("Refreshed mapping data:", data);
+        const weightsData = {};
+        
+        // รับข้อมูลที่อยู่ในรูปแบบที่สม่ำเสมอ (data.message จะเป็น array เสมอ)
+        const mappingArray = data.success ? data.message : [];
+        
+        // สร้าง weights object
+        mappingArray.forEach(item => {
+          const key = `${item.course_id}-${item.plo_id}`;
+          weightsData[key] = item.weight;
+        });
+        
+        setWeights(weightsData);
+        setScores({}); // ล้างข้อมูล scores หลังจากบันทึกสำเร็จ
+      })
+      .catch(error => {
+        console.error("Error refreshing data:", error);
+      });
+  };
 
   const handlePatchScores = () => {
     if (Object.keys(scores).length === 0) {
       alert("No changes to update. Please make some changes first.");
       return;
     }
-
+  
     const updatedScores = Object.keys(scores).map((key) => {
       const [course_id, plo_id] = key.split("-");
       return {
-        program_id: parseInt(selectedProgram), // แปลง program_id ให้เป็นตัวเลข
-        course_id: parseInt(course_id), // แปลง course_id ให้เป็นตัวเลข
-        plo_id: parseInt(plo_id), // แปลง plo_id ให้เป็นตัวเลข
-        weight: parseFloat(scores[key]) || 0, // แปลง weight เป็น float พร้อมตั้งค่า default เป็น 0
+        program_id: parseInt(selectedProgram),
+        course_id: parseInt(course_id),
+        plo_id: parseInt(plo_id),
+        weight: parseFloat(scores[key]) || 0,
       };
     });
-
+  
     // Create a copy of weights to update
     const updatedWeights = { ...weights };
-
+  
     // ใช้ Promise.all เพื่อส่ง PATCH requests ทั้งหมดในคราวเดียว
     Promise.all(
       updatedScores.map((score) =>
@@ -340,7 +458,7 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
             // Update weights for this specific course-plo pair
             const key = `${score.course_id}-${score.plo_id}`;
             updatedWeights[key] = score.weight;
-            
+  
             // Handle success for each individual score update
             console.log(
               `Successfully updated Course ID: ${score.course_id}, PLO ID: ${score.plo_id}`
@@ -357,9 +475,12 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
       .then(() => {
         // Update weights state with all the updated values
         setWeights(updatedWeights);
-        
+  
         alert("All scores updated successfully!");
         setEditingScores(false); // ยกเลิกโหมดแก้ไขเมื่อสำเร็จ
+        
+        // เพิ่มการโหลดข้อมูลใหม่เพื่อให้แน่ใจว่าข้อมูลถูกอัปเดต
+        refreshDataFromServer();
       })
       .catch((error) => {
         console.error("Error during batch update:", error.message);
@@ -494,61 +615,103 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
       });
   };
 
-  const handleEditPlo = (plo) => {
-    setNewPlo({
-      PLO_code: plo.PLO_code,
-      PLO_name: plo.PLO_name,
-      PLO_engname: plo.PLO_engname,
-    });
-    setShowEditModal(true); // เปิด modal สำหรับการแก้ไข
-  };
+  // แก้ไขฟังก์ชัน handleEditPlo
+const handleEditPlo = (plo) => {
+  console.log("Editing PLO:", plo); // เพิ่ม log เพื่อตรวจสอบข้อมูล
+  setSelectedPlo(plo.plo_id); // เก็บ plo_id เพื่อใช้ในการอัปเดต
+  setNewPlo({
+    PLO_code: plo.PLO_code,
+    PLO_name: plo.PLO_name,
+    PLO_engname: plo.PLO_engname,
+  });
+  setShowEditModal(true);
+};
 
-  const handleUpdatePlo = () => {
-    const selectedPlo = plos.find((plo) => plo.PLO_code === newPlo.PLO_code);
+// แก้ไขฟังก์ชัน handleUpdatePlo
+const handleUpdatePlo = () => {
+  // ค้นหา PLO โดยใช้ plo_id จาก selectedPlo
+  if (!selectedPlo) {
+    console.error("No PLO selected");
+    alert("No PLO selected for update");
+    return;
+  }
 
-    if (!selectedPlo) {
-      alert("Invalid PLO code selected");
-      return;
-    }
+  // Log ข้อมูลที่จะส่ง
+  console.log("Updating PLO with data:", {
+    program_id: parseInt(selectedProgram),
+    plo_id: parseInt(selectedPlo),
+    PLO_name: newPlo.PLO_name,
+    PLO_engname: newPlo.PLO_engname,
+    PLO_code: newPlo.PLO_code
+  });
 
-    // Log the data to check the payload
-    console.log("Updating PLO with data:", {
-      program_id: selectedProgram,
-      plo_id: selectedPlo.plo_id,
+  // ส่งข้อมูลไปยัง API
+  fetch("http://localhost:8000/program_plo", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      program_id: parseInt(selectedProgram),
+      plo_id: parseInt(selectedPlo),
       PLO_name: newPlo.PLO_name,
       PLO_engname: newPlo.PLO_engname,
-    });
-
-    fetch("http://localhost:8000/program_plo", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        program_id: selectedProgram, // Ensure this is set correctly
-        plo_id: selectedPlo.plo_id, // Ensure the PLO ID is correct
-        PLO_name: newPlo.PLO_name, // Ensure this is set and not empty
-        PLO_engname: newPlo.PLO_engname, // Ensure this is set and not empty
-      }),
+      PLO_code: newPlo.PLO_code // ส่ง PLO_code ไปด้วย แต่ API อาจไม่ได้ใช้
+    }),
+  })
+    .then((response) => {
+      if (!response.ok) {
+        return response.json().then(err => {
+          throw new Error(err.message || `HTTP error! status: ${response.status}`);
+        });
+      }
+      return response.json();
     })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.success) {
-          alert("PLO updated successfully");
-          setShowEditModal(false); // Close the modal on success
-        } else {
-          console.error("Error from backend:", data);
-          alert("Error updating PLO: " + (data.message || "Unknown error"));
-        }
-      })
-      .catch((error) => {
-        console.error("Error updating PLO:", error);
-        alert("An error occurred while updating the PLO");
-      });
-  };
+    .then((data) => {
+      if (data.success) {
+        // อัปเดตข้อมูลใน state
+        const updatedPlos = plos.map((plo) => {
+          if (plo.plo_id === selectedPlo) {
+            return {
+              ...plo,
+              PLO_name: newPlo.PLO_name,
+              PLO_engname: newPlo.PLO_engname,
+              PLO_code: newPlo.PLO_code // อัปเดต PLO_code ในข้อมูลที่แสดง
+            };
+          }
+          return plo;
+        });
+        
+        setPlos(updatedPlos);
+        alert("PLO updated successfully");
+        setShowEditModal(false);
+      } else {
+        console.error("Error updating PLO:", data);
+        alert("Error updating PLO: " + (data.message || "Unknown error"));
+      }
+    })
+    .catch((error) => {
+      console.error("Error updating PLO:", error);
+      alert("An error occurred while updating the PLO: " + error.message);
+    });
+};
 
   // เพิ่มตัวจัดการที่เหมาะสมสำหรับการเลือกโปรแกรม
+  // In the handleProgramChange function, add code to update the selected year
   const handleProgramChange = (e) => {
     const programId = e.target.value;
     setSelectedProgram(programId);
+
+    // If a program is selected, update the year filter to match the program's year
+    if (programId) {
+      const selectedProgramData = filteredPrograms.find(
+        (p) => p.program_id.toString() === programId
+      );
+      if (selectedProgramData && selectedProgramData.year) {
+        setSelectedYear(selectedProgramData.year.toString());
+      }
+    } else {
+      // If no program selected, reset to "all"
+      setSelectedYear("all");
+    }
 
     // ล้างข้อมูลก่อนหน้าหากไม่มีการเลือกโปรแกรม
     if (!programId) {
@@ -562,20 +725,25 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
     // Find the previous year
     const currentYear = parseInt(selectedYear);
     const previousYear = currentYear - 1;
-  
-    // First, find the previous year's program with the same major
-    fetch(`http://localhost:8000/program?major_id=${selectedMajor}&year=${previousYear}`)
+
+    fetch(
+      `http://localhost:8000/program?faculty_id=${selectedFaculty}&year=${previousYear}`
+    )
       .then((response) => response.json())
       .then((programs) => {
         if (programs.length === 0) {
-          alert(`No programs found for major ${selectedMajor} in year ${previousYear}`);
+          alert(
+            `No programs found for faculty ${selectedFaculty} in year ${previousYear}`
+          );
           return;
         }
-  
+
         const previousYearProgram = programs[0];
-  
+
         // Fetch PLOs for the previous year's program
-        return fetch(`http://localhost:8000/program_plo?program_id=${previousYearProgram.program_id}`);
+        return fetch(
+          `http://localhost:8000/program_plo?program_id=${previousYearProgram.program_id}`
+        );
       })
       .then((response) => response.json())
       .then((data) => {
@@ -591,10 +759,10 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
         alert("An error occurred while loading previous year PLOs");
       });
   };
-  
+
   const handleMergePLOs = () => {
     // Merge PLOs from previous year to current program
-    const ploPatchRequests = previousYearPLOs.map((plo) => 
+    const ploPatchRequests = previousYearPLOs.map((plo) =>
       fetch("http://localhost:8000/plo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -606,14 +774,14 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
         }),
       })
     );
-  
+
     Promise.all(ploPatchRequests)
-      .then((responses) => Promise.all(responses.map(r => r.json())))
+      .then((responses) => Promise.all(responses.map((r) => r.json())))
       .then((results) => {
-        const successfulAdds = results.filter(r => r.success);
+        const successfulAdds = results.filter((r) => r.success);
         alert(`Successfully added ${successfulAdds.length} PLOs`);
         setShowLoadPreviousPLOModal(false);
-        
+
         // Refresh PLOs for current program
         fetch(`http://localhost:8000/program_plo?program_id=${selectedProgram}`)
           .then((response) => response.json())
@@ -629,8 +797,6 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
     <div style={{ padding: "20px" }}>
       <h1>Course-PLO Management</h1>
 
-      
-
       <div style={{ marginBottom: "15px" }}>
         <label>Filter by University: </label>
         <select
@@ -638,7 +804,7 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
           value={selectedUniversity}
           style={{ marginLeft: "10px", padding: "5px", minWidth: "200px" }}
         >
-          <option value="all">--All Universities--</option>
+          <option value="all"> All Universities </option>
           {universities.map((university) => (
             <option
               key={university.university_id}
@@ -651,16 +817,28 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
       </div>
 
       <div style={{ marginBottom: "15px" }}>
-        <label>Filter by Major: </label>
+        <label>Filter by Faculty: </label>
         <select
-          onChange={handleMajorChange}
-          value={selectedMajor}
+          onChange={handleFacultyChange}
+          value={selectedFaculty}
           style={{ marginLeft: "10px", padding: "5px", minWidth: "200px" }}
         >
-          <option value="all">--All Majors--</option>
-          {majors.map((major) => (
-            <option key={major.major_id} value={major.major_id}>
-              {major.major_name_en} ({major.major_name_th})
+          <option value="all"> All Facultys </option>
+          {facultys.map((faculty) => (
+            <option key={faculty.faculty_id} value={faculty.faculty_id}>
+              {faculty.faculty_name_en} ({faculty.faculty_name_th})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ marginBottom: "15px" }}>
+        <label>Select Program: </label>
+        <select onChange={handleProgramChange} value={selectedProgram || ""}>
+          <option value=""> All Program </option>
+          {getVisiblePrograms().map((program) => (
+            <option key={program.program_id} value={program.program_id}>
+              {program.program_name}
             </option>
           ))}
         </select>
@@ -673,7 +851,7 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
           value={selectedYear}
           style={{ marginLeft: "10px", padding: "5px", minWidth: "200px" }}
         >
-          <option value="all">--All Years--</option>
+          <option value="all"> All Years </option>
           {years.map((year) => (
             <option key={year} value={year}>
               {year}
@@ -681,16 +859,6 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
           ))}
         </select>
       </div>
-
-      <label>Select Program: </label>
-      <select onChange={handleProgramChange} value={selectedProgram || ""}>
-        <option value="">-- All Program --</option>
-        {filteredPrograms.map((program) => (
-          <option key={program.program_id} value={program.program_id}>
-            {program.program_name}
-          </option>
-        ))}
-      </select>
 
       <div>
         <h2>PLO List</h2>
@@ -803,51 +971,119 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
         Submit New Scores
       </button>
 
-      <table border="1" cellPadding="10">
-        <thead>
-          <tr>
-            <th>Course</th>
-            {plos.map((plo) => (
-              <th key={plo.plo_id}>{plo.PLO_code}</th>
-            ))}
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {courses.map((course) => (
-            <tr key={course.course_id}>
-              <td>
-                {course.course_id} {course.course_name}
-              </td>
-              {plos.map((plo) => {
-                const key = `${course.course_id}-${plo.plo_id}`;
-                return (
-                  <td key={plo.plo_id}>
-                    {editingScores ? (
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={scores[key] || ""}
-                        onChange={(e) =>
-                          handleInputChange(
-                            course.course_id,
-                            plo.plo_id,
-                            e.target.value
-                          )
-                        }
-                      />
-                    ) : (
-                      (weights[key] !== undefined ? weights[key] : "-") || "-"
-                    )}
-                  </td>
-                );
-              })}
-              <td>{calculateTotal(course.course_id)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <table 
+  style={{
+    borderCollapse: "collapse",
+    width: "100%",
+    marginTop: "15px",
+    border: "2px solid black",
+  }}
+>
+  <thead>
+    <tr>
+      <th 
+        style={{
+          border: "1px solid black",
+          padding: "10px",
+          textAlign: "center",
+        }}
+        rowSpan="2"
+      >
+        Course
+      </th>
+      <th 
+        style={{
+          border: "1px solid black",
+          padding: "10px",
+          textAlign: "center",
+          backgroundColor: "#f2f2f2"
+        }}
+        colSpan={plos.length}
+      >
+        PLO
+      </th>
+      <th 
+        style={{
+          border: "1px solid black",
+          padding: "10px",
+          textAlign: "center",
+        }}
+        rowSpan="2"
+      >
+        Total
+      </th>
+    </tr>
+    <tr>
+      {plos.map((plo) => (
+        <th
+          key={plo.plo_id}
+          style={{
+            border: "1px solid black",
+            padding: "10px",
+            textAlign: "center",
+          }}
+        >
+          {plo.PLO_code}
+        </th>
+      ))}
+    </tr>
+  </thead>
+  <tbody>
+    {courses.map((course) => (
+      <tr key={course.course_id}>
+        <td style={{ border: "1px solid black", padding: "10px" }}>
+          {course.course_id} {course.course_name}
+        </td>
+        {plos.map((plo) => {
+          const key = `${course.course_id}-${plo.plo_id}`;
+          return (
+            <td
+              key={plo.plo_id}
+              style={{
+                border: "1px solid black",
+                padding: "10px",
+                textAlign: "center",
+              }}
+            >
+              {editingScores ? (
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={scores[key] || ""}
+                  onChange={(e) =>
+                    handleInputChange(
+                      course.course_id,
+                      plo.plo_id,
+                      e.target.value
+                    )
+                  }
+                  style={{
+                    width: "60px",
+                    padding: "5px",
+                    textAlign: "center",
+                  }}
+                />
+              ) : (
+                (weights[key] !== undefined ? weights[key] : "-") || "-"
+              )}
+            </td>
+          );
+        })}
+        <td
+          style={{
+            border: "1px solid black",
+            padding: "10px",
+            textAlign: "center",
+            fontWeight: "bold",
+          }}
+        >
+          {calculateTotal(course.course_id)}
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
 
       {/* Modal for Add PLO */}
       {showAddModal && (
@@ -968,97 +1204,95 @@ const [previousYearPLOs, setPreviousYearPLOs] = useState([]);
 
       {/* Modal for Load Previous Year PLOs */}
       <button
-     onClick={handleLoadPreviousPLO}
-    style={{
-      backgroundColor: "gray",
-      color: "white",
-      padding: "10px 20px",
-      border: "none",
-      cursor: "pointer",
-      marginBottom: "10px",
-      display: "block" // ป้องกันการซ่อน
-    }}
-  >
-    Load Previous Year PLOs
-  </button>
+        onClick={handleLoadPreviousPLO}
+        style={{
+          backgroundColor: "gray",
+          color: "white",
+          padding: "10px 20px",
+          border: "none",
+          cursor: "pointer",
+          marginBottom: "10px",
+          display: "block", // ป้องกันการซ่อน
+        }}
+      >
+        Load Previous Year PLOs
+      </button>
 
-  {/* ✅ ตรวจสอบว่า Modal เปิดเมื่อ showLoadPreviousPLOModal === true */}
-  {showLoadPreviousPLOModal && (
-    <div
-      style={{
-        position: "fixed",
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-        backgroundColor: "white",
-        padding: "20px",
-        boxShadow: "0 2px 10px rgba(0, 0, 0, 0.1)",
-        zIndex: 1000,
-        width: "500px",
-        maxHeight: "70%",
-        overflowY: "auto",
-      }}
-    >
-      <h3>Previous Year PLOs</h3>
-      {previousYearPLOs.length > 0 ? (
-        <>
-          <table border="1" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th>PLO Code</th>
-                <th>PLO Name</th>
-                <th>PLO English Name</th>
-              </tr>
-            </thead>
-            <tbody>
-              {previousYearPLOs.map((plo, index) => (
-                <tr key={index}>
-                  <td>{plo.PLO_code}</td>
-                  <td>{plo.PLO_name}</td>
-                  <td>{plo.PLO_engname}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ marginTop: "15px", textAlign: "center" }}>
-            <button 
-              onClick={handleMergePLOs}
-              style={{
-                backgroundColor: "green",
-                color: "white",
-                padding: "10px 20px",
-                border: "none",
-                cursor: "pointer",
-                marginRight: "10px",
-              }}
-            >
-              Merge All PLOs
-            </button>
-            <button 
-              onClick={() => setShowLoadPreviousPLOModal(false)}
-              style={{
-                backgroundColor: "red",
-                color: "white",
-                padding: "10px 20px",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </>
-      ) : (
-        <p>No PLOs found for the previous year.</p>
+      {/* ✅ ตรวจสอบว่า Modal เปิดเมื่อ showLoadPreviousPLOModal === true */}
+      {showLoadPreviousPLOModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            backgroundColor: "white",
+            padding: "20px",
+            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.1)",
+            zIndex: 1000,
+            width: "500px",
+            maxHeight: "70%",
+            overflowY: "auto",
+          }}
+        >
+          <h3>Previous Year PLOs</h3>
+          {previousYearPLOs.length > 0 ? (
+            <>
+              <table
+                border="1"
+                style={{ width: "100%", borderCollapse: "collapse" }}
+              >
+                <thead>
+                  <tr>
+                    <th>PLO Code</th>
+                    <th>PLO Name</th>
+                    <th>PLO English Name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previousYearPLOs.map((plo, index) => (
+                    <tr key={index}>
+                      <td>{plo.PLO_code}</td>
+                      <td>{plo.PLO_name}</td>
+                      <td>{plo.PLO_engname}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginTop: "15px", textAlign: "center" }}>
+                <button
+                  onClick={handleMergePLOs}
+                  style={{
+                    backgroundColor: "green",
+                    color: "white",
+                    padding: "10px 20px",
+                    border: "none",
+                    cursor: "pointer",
+                    marginRight: "10px",
+                  }}
+                >
+                  Merge All PLOs
+                </button>
+                <button
+                  onClick={() => setShowLoadPreviousPLOModal(false)}
+                  style={{
+                    backgroundColor: "red",
+                    color: "white",
+                    padding: "10px 20px",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <p>No PLOs found for the previous year.</p>
+          )}
+        </div>
       )}
     </div>
-      )}
-
-    </div>
-
-    
-  
-
   );
 };
 

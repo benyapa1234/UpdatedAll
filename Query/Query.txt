@@ -208,6 +208,7 @@ CREATE TABLE major (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+
 CREATE TABLE university_major (
     id INT PRIMARY KEY AUTO_INCREMENT,
     university_id INT(11) NOT NULL,
@@ -215,3 +216,27 @@ CREATE TABLE university_major (
     FOREIGN KEY (university_id) REFERENCES university(university_id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (major_id) REFERENCES major(major_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+***แก้ไข major เป็น facuty ทุกตาราง**
+//1
+RENAME TABLE major TO faculty;
+
+//2
+ALTER TABLE faculty 
+CHANGE major_id faculty_id INT(11) AUTO_INCREMENT,
+CHANGE major_name_th faculty_name_th VARCHAR(255) NOT NULL,
+CHANGE major_name_en faculty_name_en VARCHAR(255) NOT NULL;
+
+//3
+RENAME TABLE program_major TO program_faculty;
+
+//4
+ALTER TABLE program_faculty CHANGE major_id faculty_id INT(11);
+
+//5
+RENAME TABLE university_major TO university_faculty;
+
+//6
+ALTER TABLE university_faculty CHANGE major_id faculty_id INT(11);
+
+

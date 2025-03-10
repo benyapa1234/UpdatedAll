@@ -6,9 +6,9 @@ import * as XLSX from "xlsx";
 export default function CurriculumManagement() {
   const [programs, setPrograms] = useState([]);
   const [universities, setUniversities] = useState([]);
-  const [majors, setMajors] = useState([]);
+  const [facultys, setFacultys] = useState([]);
   const [selectedUniversity, setSelectedUniversity] = useState("");
-  const [selectedMajor, setSelectedMajor] = useState("");
+  const [selectedFaculty, setSelectedFaculty] = useState("");
   const [selectedProgram, setSelectedProgram] = useState("");
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [selectedSectionId, setSelectedSectionId] = useState("");
@@ -37,6 +37,7 @@ export default function CurriculumManagement() {
   const [previousYearCLOs, setPreviousYearCLOs] = useState([]);
   const [showPreviousYearCLOsModal, setShowPreviousYearCLOsModal] =
     useState(false);
+  const [allPLOs, setAllPLOs] = useState([]);
 
   useEffect(() => {
     // ดึงข้อมูลมหาวิทยาลัย
@@ -49,7 +50,7 @@ export default function CurriculumManagement() {
   useEffect(() => {
     if (!selectedUniversity) return;
 
-    fetch(`http://localhost:8000/major?university_id=${selectedUniversity}`)
+    fetch(`http://localhost:8000/faculty?university_id=${selectedUniversity}`)
       .then(async (response) => {
         if (!response.ok) {
           console.error(`HTTP Error: ${response.status}`);
@@ -63,37 +64,25 @@ export default function CurriculumManagement() {
       .then((data) => {
         const formattedData = Array.isArray(data) ? data : [data];
 
-        console.log("Formatted Majors:", formattedData);
-        setMajors(formattedData);
+        console.log("Formatted Facultys:", formattedData);
+        setFacultys(formattedData);
       })
       .catch((error) => {
-        console.error(" Error fetching majors:", error);
-        setMajors([]);
+        console.error(" Error fetching facultys:", error);
+        setFacultys([]);
       });
   }, [selectedUniversity]);
 
   useEffect(() => {
-    if (selectedMajor) {
+    if (selectedFaculty) {
       // ดึงข้อมูลโปรแกรมตามสาขาที่เลือก
-      fetch(`http://localhost:8000/program?major_id=${selectedMajor}`)
+      fetch(`http://localhost:8000/program?faculty_id=${selectedFaculty}`)
         .then((response) => response.json())
         .then((data) => setPrograms(data))
         .catch((error) => console.error("Error fetching programs:", error));
     }
-  }, [selectedMajor]);
+  }, [selectedFaculty]);
 
-  // useEffect(() => {
-  //   fetch("http://localhost:8000/program")
-  //     .then((response) => {
-  //       if (!response.ok) throw new Error("Failed to fetch programs");
-  //       return response.json();
-  //     })
-  //     .then((data) => setPrograms(data))
-  //     .catch((error) => {
-  //       console.error("Error fetching programs:", error);
-  //       setPrograms([]);
-  //     });
-  // }, []);
 
   useEffect(() => {
     if (selectedProgram) {
@@ -229,6 +218,19 @@ export default function CurriculumManagement() {
   ]);
 
   useEffect(() => {
+    if (allPLOs.length > 0) {
+      console.log("PLO Data Structure Check:");
+      allPLOs.forEach((plo, index) => {
+        console.log(`PLO #${index}:`, {
+          PLO_id: plo.PLO_id,
+          plo_id: plo.plo_id, // บางที API อาจจะใช้ชื่อฟิลด์นี้แทน
+          PLO_code: plo.PLO_code
+        });
+      });
+    }
+  }, [allPLOs]);
+
+  useEffect(() => {
     if (
       selectedCourseId &&
       selectedSectionId &&
@@ -297,6 +299,63 @@ export default function CurriculumManagement() {
     programs,
   ]);
 
+  // เพิ่มฟังก์ชันดึงข้อมูล PLO
+  const fetchPLOsForProgram = async () => {
+    // ...
+    try {
+      const response = await fetch(`http://localhost:8000/program_plo?program_id=${selectedProgram}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log("Raw PLO data:", data);
+      
+      // ปรับแต่งข้อมูลให้มีฟิลด์ PLO_id
+      let formattedPLOs = [];
+      if (data.success && Array.isArray(data.message)) {
+        formattedPLOs = data.message.map(plo => ({
+          ...plo,
+          PLO_id: plo.PLO_id || plo.plo_id // ใช้ plo_id หากไม่มี PLO_id
+        }));
+      } else if (Array.isArray(data)) {
+        formattedPLOs = data.map(plo => ({
+          ...plo,
+          PLO_id: plo.PLO_id || plo.plo_id
+        }));
+      } else if (data) {
+        formattedPLOs = [{
+          ...data,
+          PLO_id: data.PLO_id || data.plo_id
+        }];
+      }
+      
+      console.log("Formatted PLOs:", formattedPLOs);
+      setAllPLOs(formattedPLOs);
+    } catch (error) {
+      // ...
+    }
+  };
+
+useEffect(() => {
+  if (
+    selectedProgram &&
+    selectedCourseId &&
+    selectedSectionId &&
+    selectedSemesterId &&
+    selectedYear
+  ) {
+    fetchPLOsForProgram();
+  } else {
+    setAllPLOs([]);
+  }
+}, [
+  selectedProgram,
+  selectedCourseId,
+  selectedSectionId,
+  selectedSemesterId,
+  selectedYear
+]);
+
   useEffect(() => {
     const updatedWeights = {};
 
@@ -335,35 +394,41 @@ export default function CurriculumManagement() {
       setEditClo(cloToEdit); // Set the CLO to edit
       setEditCloName(cloToEdit.CLO_name || ""); // Initialize CLO name
       setEditCloEngName(cloToEdit.CLO_engname || ""); // Initialize CLO English name
+      setEditCloCode(cloToEdit.CLO_code || "");
       setShowEditModal(true); // Show the modal
     }
   };
 
   const handleSaveClo = async () => {
     if (!editClo) return;
-
+  
     // หา program_id จากโปรแกรมที่เลือก
     const selectedProgramData = programs.find(
       (program) => program.program_id.toString() === selectedProgram.toString()
     );
-
+  
     if (!selectedProgramData) {
       console.error("Program not found:", selectedProgram);
       alert("Please select a valid program.");
       return;
     }
-
+  
     // Validation checks
+    if (!editCloCode) {
+      alert("CLO Code cannot be empty.");
+      return;
+    }
+  
     if (!editCloName) {
       alert("CLO Name cannot be empty.");
       return;
     }
-
+  
     if (!editCloEngName) {
       alert("CLO English Name cannot be empty.");
       return;
     }
-
+  
     const updatedCLO = {
       clo_id: editClo.CLO_id,
       program_id: selectedProgramData.program_id,
@@ -373,33 +438,34 @@ export default function CurriculumManagement() {
       year: selectedYear,
       CLO_name: editCloName.trim(),
       CLO_engname: editCloEngName.trim(),
-      CLO_code: editClo.CLO_code, // Preserve the original CLO code
+      CLO_code: editCloCode.trim(), // เพิ่ม CLO_code ในการอัปเดต
     };
-
+  
     try {
       const response = await fetch("http://localhost:8000/course_clo", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedCLO),
       });
-
+  
       if (response.ok) {
-        // Update the CLOs in the state
+        // Update the CLOs in the state with all fields
         const updatedCLOs = CLOs.map((clo) =>
           clo.CLO_id === editClo.CLO_id
             ? {
                 ...clo,
                 CLO_name: editCloName.trim(),
                 CLO_engname: editCloEngName.trim(),
+                CLO_code: editCloCode.trim(), // เพิ่ม CLO_code ในการอัปเดตที่แสดงในตาราง
               }
             : clo
         );
-
+  
         setCLOs(updatedCLOs);
-
+  
         // Close the modal
         setShowEditModal(false);
-
+  
         // Optional: Show success message
         alert("CLO updated successfully!");
       } else {
@@ -430,56 +496,29 @@ export default function CurriculumManagement() {
       !year ||
       !programIdentifier
     ) {
-      console.error("Missing required fields:", {
-        cloId,
-        courseId,
-        semesterId,
-        sectionId,
-        year,
-        programIdentifier,
-      });
+      console.error("Missing required fields");
       alert("Missing required fields. Please check your data.");
       return;
     }
-
-    // Find the program_id based on program_name or program_id
+  
+    // หา program_id
     let programId;
     if (typeof programIdentifier === "string" && isNaN(programIdentifier)) {
-      // If programIdentifier is a string and not a number, find by name
       const selectedProgramData = programs.find(
         (program) => program.program_name === programIdentifier
       );
-
+  
       if (!selectedProgramData) {
         console.error("Program not found:", programIdentifier);
         alert("Program not found.");
         return;
       }
-
+  
       programId = selectedProgramData.program_id;
     } else {
-      // If programIdentifier is a number or numeric string, use it directly
       programId = parseInt(programIdentifier);
     }
-
-    // Console log selected data
-    console.log("Selected CLO Data:", {
-      cloId,
-      courseId,
-      semesterId,
-      sectionId,
-      year,
-      programId,
-    });
-    console.log("Sending DELETE request with data:", {
-      cloId,
-      courseId,
-      semesterId,
-      sectionId,
-      year,
-      programId,
-    });
-
+  
     if (window.confirm("Are you sure you want to delete this CLO?")) {
       try {
         const response = await fetch("http://localhost:8000/course_clo", {
@@ -496,13 +535,39 @@ export default function CurriculumManagement() {
             program_id: programId,
           }),
         });
-
-        console.log("Response status:", response.status);
-
+  
         if (response.ok) {
-          const result = await response.json();
-          console.log("CLO deleted successfully:", result.message);
+          // อัปเดต CLOs state
           setCLOs((prevCLOs) => prevCLOs.filter((clo) => clo.CLO_id !== cloId));
+          
+          // อัปเดต mappings state โดยลบการแมปทั้งหมดที่เกี่ยวข้องกับ CLO ที่ถูกลบ
+          setMappings((prevMappings) => 
+            prevMappings.filter((mapping) => mapping.CLO_id !== cloId)
+          );
+          
+          // เคลียร์ค่า scores ถ้ากำลังแก้ไขอยู่
+          if (editingScores) {
+            const updatedScores = { ...scores };
+            Object.keys(updatedScores).forEach(key => {
+              const [ploId, mappingCloId] = key.split('-');
+              if (parseInt(mappingCloId) === cloId) {
+                delete updatedScores[key];
+              }
+            });
+            setScores(updatedScores);
+          }
+          
+          // รีเฟรชข้อมูล mappings จาก API เพื่อให้แน่ใจว่าข้อมูลถูกต้อง
+          try {
+            // รอเวลาเล็กน้อยเพื่อให้การลบในฐานข้อมูลเสร็จสมบูรณ์
+            setTimeout(async () => {
+              await fetchUpdatedMappings();
+            }, 500);
+          } catch (refreshError) {
+            console.error("Error refreshing mappings:", refreshError);
+          }
+  
+          alert("CLO deleted successfully!");
         } else {
           const error = await response.json();
           console.error("Failed to delete CLO:", error.message);
@@ -843,20 +908,39 @@ const handleUploadButtonClick = () => {
   };
 
   const calculateTotal = (ploId) => {
-    return Array.from(new Set(mappings.map((m) => m.CLO_id))).reduce(
-      (sum, cloId) => {
+    // ใช้เฉพาะ CLO_id ที่มีอยู่ใน CLOs ปัจจุบันเท่านั้น
+    const activeCloIds = CLOs.map(clo => clo.CLO_id);
+    
+    return mappings
+      .filter(m => m.PLO_id === ploId && activeCloIds.includes(m.CLO_id))
+      .reduce((sum, mapping) => {
         if (editingScores) {
-          const key = `${ploId}-${cloId}`;
+          const key = `${ploId}-${mapping.CLO_id}`;
           return sum + (Number(scores[key]) || 0);
         } else {
-          const mapping = mappings.find(
-            (m) => m.PLO_id === ploId && m.CLO_id === cloId
-          );
-          return sum + (mapping ? Number(mapping.weight) || 0 : 0);
+          return sum + (Number(mapping.weight) || 0);
         }
-      },
-      0
-    );
+      }, 0);
+  };
+
+  const calculateTotalForPLO = (ploId) => {
+    if (!ploId) return 0;
+    
+    let total = 0;
+    CLOs.forEach(clo => {
+      const mapping = mappings.find(
+        m => (m.PLO_id === ploId || m.plo_id === ploId) && m.CLO_id === clo.CLO_id
+      );
+      
+      if (editingScores) {
+        const key = `${ploId}-${clo.CLO_id}`;
+        total += Number(scores[key] || 0);
+      } else if (mapping) {
+        total += Number(mapping.weight || 0);
+      }
+    });
+    
+    return total || 0;
   };
 
   const handleEditToggle = () => {
@@ -1227,19 +1311,19 @@ const handleUploadButtonClick = () => {
       </div>
 
       <div className="card mt-3 p-3" style={{ backgroundColor: "#e0e4cc" }}>
-        <h6>Select Major:</h6>
+        <h6>Select Faculty:</h6>
         <select
           className="form-select"
-          value={selectedMajor}
-          onChange={(e) => setSelectedMajor(e.target.value)}
+          value={selectedFaculty}
+          onChange={(e) => setSelectedFaculty(e.target.value)}
           disabled={!selectedUniversity}
         >
           <option value="" disabled>
-            Select Major
+            Select Faculty
           </option>
-          {majors.map((major) => (
-            <option key={major.major_id} value={major.major_id}>
-              {major.major_name_en}
+          {facultys.map((faculty) => (
+            <option key={faculty.faculty_id} value={faculty.faculty_id}>
+              {faculty.faculty_name_en}
             </option>
           ))}
         </select>
@@ -1258,7 +1342,7 @@ const handleUploadButtonClick = () => {
             ); // Add this log
             setSelectedProgram(programValue);
           }}
-          disabled={!selectedMajor}
+          disabled={!selectedFaculty}
         >
           <option value="" disabled>
             Select Program
@@ -1274,7 +1358,28 @@ const handleUploadButtonClick = () => {
         </select>
       </div>
 
+
       <div className="row mt-3">
+
+      <div className="col-md-3">
+          <select
+            className="form-select"
+            value={selectedYear || ""}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            disabled={!programCourseData.years.length}
+          >
+            <option value="" disabled>
+              Select Year
+            </option>
+            {programCourseData.years.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </div>
+
+
         <div className="col-md-3">
           <select
             className="form-select"
@@ -1330,24 +1435,6 @@ const handleUploadButtonClick = () => {
             {programCourseData.semesters.map((semester) => (
               <option key={semester} value={semester}>
                 {semester}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="col-md-3">
-          <select
-            className="form-select"
-            value={selectedYear || ""}
-            onChange={(e) => setSelectedYear(e.target.value)}
-            disabled={!programCourseData.years.length}
-          >
-            <option value="" disabled>
-              Select Year
-            </option>
-            {programCourseData.years.map((year) => (
-              <option key={year} value={year}>
-                {year}
               </option>
             ))}
           </select>
@@ -1663,6 +1750,20 @@ const handleUploadButtonClick = () => {
                 ></button>
               </div>
               <div className="modal-body">
+
+              <div className="mb-3">
+                  <label htmlFor="clo-code" className="form-label">
+                    CLO Code
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    id="clo-code"
+                    value={editCloCode}
+                    onChange={(e) => setEditCloCode(e.target.value)}
+                  />
+                </div>
+
                 <div className="mb-3">
                   <label htmlFor="clo-name" className="form-label">
                     CLO Name
@@ -1739,73 +1840,93 @@ const handleUploadButtonClick = () => {
               </>
             )}
           </div>
-          {mappings.length > 0 ? (
-            <div className="table-responsive">
-              <table
-                className="table table-bordered"
-                border="1"
-                cellPadding="10"
-              >
-                <thead>
-                  <tr>
-                    <th>PLO</th>
-                    {CLOs.map((clo) => (
-                      <th key={`header-clo-${clo.CLO_id}`}>{clo.CLO_code}</th>
-                    ))}
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from(new Set(mappings.map((m) => m.PLO_id))).map(
-                    (ploId) => {
-                      const plo = mappings.find((m) => m.PLO_id === ploId);
-                      return (
-                        <tr key={`row-plo-${ploId}`}>
-                          <td>{plo?.PLO_code || "N/A"}</td>
-                          {CLOs.map((clo) => {
-                            const key = `${ploId}-${clo.CLO_id}`;
-                            // Find weight from mappings array
-                            const mapping = mappings.find(
-                              (m) =>
-                                m.PLO_id === ploId && m.CLO_id === clo.CLO_id
-                            );
-                            const weightValue = mapping ? mapping.weight : "-";
 
-                            return (
-                              <td key={`cell-${key}`}>
-                                {editingScores ? (
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    value={scores[key] || ""}
-                                    onChange={(e) =>
-                                      handleInputChange(
-                                        ploId,
-                                        clo.CLO_id,
-                                        e.target.value
-                                      )
-                                    }
-                                    className="form-control"
-                                    style={{ width: "60px" }}
-                                  />
-                                ) : (
-                                  weightValue
-                                )}
-                              </td>
-                            );
-                          })}
-                          <td>{calculateTotal(ploId)}</td>
-                        </tr>
-                      );
-                    }
-                  )}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p>No PLO-CLO mappings available</p>
-          )}
+          {(allPLOs.length > 0 && CLOs.length > 0) ? (
+  <div className="table-responsive">
+    <table
+      className="table table-bordered"
+      border="1"
+      cellPadding="10"
+    >
+      <thead>
+        <tr>
+          <th rowSpan="2">PLO</th>
+          <th colSpan={CLOs.length} className="text-center">CLO</th>
+          <th rowSpan="2">Total</th>
+        </tr>
+        <tr>
+          {CLOs.map((clo) => (
+            <th key={`header-clo-${clo.CLO_id}`} className="text-center">
+              {clo.CLO_code}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {allPLOs.map((plo,index) => {
+
+        const ploId = plo.PLO_id || plo.plo_id;
+          return (
+            <tr key={ploId ? `row-plo-${ploId}` : `row-plo-index-${index}`}>
+              <td>{plo.PLO_code || "N/A"}</td>
+              {CLOs.map((clo) => {
+                const key = `${plo.PLO_id}-${clo.CLO_id}`;
+                // หาค่า weight จาก mappings
+                const mapping = mappings.find(
+                  (m) => (m.PLO_id === ploId || m.plo_id === ploId) && m.CLO_id === clo.CLO_id
+        );
+                const weightValue = mapping ? mapping.weight : "-";
+
+                return (
+                  <td key={`cell-${key}`} className="text-center">
+                    {editingScores ? (
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={scores[key] || ""}
+                        onChange={(e) =>
+                          handleInputChange(
+                            plo.PLO_id,
+                            clo.CLO_id,
+                            e.target.value
+                          )
+                        }
+                        className="form-control mx-auto"
+                        style={{ width: "60px" }}
+                      />
+                    ) : (
+                      weightValue
+                    )}
+                  </td>
+                );
+              })}
+              <td className="text-center">{calculateTotalForPLO(plo.PLO_id)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+) : (
+  <p className="text-warning">
+    {!(
+      selectedCourseId &&
+      selectedSectionId &&
+      selectedSemesterId &&
+      selectedYear
+    ) ? (
+      "กรุณาเลือกข้อมูลให้ครบทุกช่องก่อนแสดงตาราง"
+    ) : CLOs.length === 0 ? (
+      "ไม่พบข้อมูล CLO"
+    ) : allPLOs.length === 0 ? (
+      "ไม่พบข้อมูล PLO"
+    ) : (
+      "ไม่พบข้อมูลการแมป PLO-CLO"
+    )}
+  </p>
+)}
+
         </div>
       </div>
     </div>
