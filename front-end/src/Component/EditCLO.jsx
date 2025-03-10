@@ -1046,14 +1046,14 @@ const handleUploadButtonClick = () => {
   const handlePostScores = async () => {
     // Ensure CLOs is always an array
     const validClos = Array.isArray(CLOs) ? CLOs : CLOs.CLO_id ? [CLOs] : [];
-
+  
     // Find program data with more robust selection
     const selectedProgramData = programs.find(
       (program) =>
         program.program_id.toString() === selectedProgram.toString() ||
         program.program_name === selectedProgram
     );
-
+  
     // Validate program selection with detailed logging
     if (!selectedProgramData) {
       console.error("No matching program found for:", selectedProgram);
@@ -1067,7 +1067,7 @@ const handleUploadButtonClick = () => {
       alert("Please select a valid program.");
       return;
     }
-
+  
     // Comprehensive field validation
     const requiredFields = [
       { name: "Program", value: selectedProgramData.program_id },
@@ -1076,7 +1076,7 @@ const handleUploadButtonClick = () => {
       { name: "Semester", value: selectedSemesterId },
       { name: "Year", value: selectedYear },
     ];
-
+  
     const missingFields = requiredFields.filter((field) => !field.value);
     if (missingFields.length > 0) {
       const missingFieldNames = missingFields.map((f) => f.name).join(", ");
@@ -1084,76 +1084,79 @@ const handleUploadButtonClick = () => {
       alert(`Please complete these fields: ${missingFieldNames}`);
       return;
     }
-
+  
     // Validate scores with detailed logging
     if (Object.keys(scores).length === 0) {
       console.warn("No scores to submit");
       alert("No scores to submit. Please add some scores first.");
       return;
     }
-
+  
     // Debug logging
     console.group("POST Scores Debug");
     console.log("CLOs:", CLOs);
     console.log("Parsed validClos:", validClos);
     console.log("Scores:", scores);
     console.log("Mappings:", mappings);
+    console.log("All PLOs:", allPLOs);  // Add this to debug available PLOs
     console.groupEnd();
-
+  
     // Create a mutable array for scores
     const scoresArray = [];
-
-    const validationErrors = [];
-
+    let validationErrors = [];
+  
+    // Get all available PLO IDs from allPLOs for validation
+    const availablePloIds = allPLOs.map(plo => plo.PLO_id || plo.plo_id);
+    console.log("Available PLO IDs for validation:", availablePloIds);
+  
     for (const key in scores) {
       const [ploId, cloId] = key.split("-");
       const parsedPloId = parseInt(ploId);
       const parsedCloId = parseInt(cloId);
       const scoreValue = parseFloat(scores[key]);
-
-      // Validate PLO
-      const isPloValid = plos.some(
-        (plo) =>
-          plo == parsedPloId ||
-          (typeof plo === "object" && plo.PLO_id == parsedPloId)
-      );
-
+  
+      // Validate PLO - check against the allPLOs array instead of plos
+      const isPloValid = availablePloIds.includes(parsedPloId);
+  
       if (!isPloValid) {
         validationErrors.push(`Invalid PLO ID: ${parsedPloId}`);
         console.warn(`Invalid PLO ID: ${parsedPloId}`);
-        console.log("Available PLOs:", plos);
+        console.log("Available PLO IDs:", availablePloIds);
       }
-
+  
       // Validate CLO
       const isCloValid = validClos.some(
         (clo) => clo.CLO_id == parsedCloId || clo.CLO_id === parsedCloId
       );
-
+  
       if (!isCloValid) {
         validationErrors.push(`Invalid CLO ID: ${parsedCloId}`);
         console.warn(`Invalid CLO ID: ${parsedCloId}`);
         console.log("Available CLOs:", validClos);
       }
-
+  
       // Score value validation
       if (isNaN(scoreValue)) {
         validationErrors.push(`Invalid score for ${key}: ${scores[key]}`);
       }
-
-      scoresArray.push({
-        plo_id: parsedPloId,
-        clo_id: parsedCloId,
-        weight: scoreValue || 0,
-      });
+  
+      // Only add valid entries to scoresArray
+      if (isPloValid && isCloValid && !isNaN(scoreValue)) {
+        scoresArray.push({
+          plo_id: parsedPloId,
+          clo_id: parsedCloId,
+          weight: scoreValue || 0,
+        });
+      }
     }
-
+  
     // Halt if validation errors exist
     if (validationErrors.length > 0) {
       console.error("Validation Errors:", validationErrors);
       alert(`Validation errors:\n${validationErrors.join("\n")}`);
       return;
     }
-
+  
     // Prepare request body with type conversions
     const requestBody = {
       program_id: parseInt(selectedProgramData.program_id),
@@ -1163,11 +1166,11 @@ const handleUploadButtonClick = () => {
       year: parseInt(selectedYear),
       scores: scoresArray,
     };
-
+  
     console.group("Request Body");
     console.log(JSON.stringify(requestBody, null, 2));
     console.groupEnd();
-
+  
     try {
       const response = await fetch("http://localhost:8000/plo_clo", {
         method: "POST",
@@ -1176,23 +1179,23 @@ const handleUploadButtonClick = () => {
         },
         body: JSON.stringify(requestBody),
       });
-
+  
       // Detailed error handling
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Error Response Status:", response.status);
         console.error("Error Response Body:", errorText);
-
+  
         throw new Error(errorText || `HTTP error! status: ${response.status}`);
       }
-
+  
       const responseData = await response.json();
       console.log("Success Response:", responseData);
-
+  
       await fetchUpdatedMappings();
-
+  
       alert("PLO-CLO mappings added successfully!");
-
+  
       setEditingScores(false);
       setScores({});
     } catch (error) {
